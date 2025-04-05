@@ -6,14 +6,13 @@ import datetime
 import sys
 from aiohttp import web
 
-# Proje dizinini, çalışma dizininizin altındaki "local" klasörü olarak ayarlıyoruz.
-base_path = os.path.join(os.getcwd(), "local")
-if not os.path.exists(base_path):
-    os.makedirs(base_path)
-os.chdir(base_path)
+# Çalışma dizinini ana dizin olarak ayarla
+current_dir = os.path.dirname(os.path.abspath(__file__))
+os.chdir(current_dir)
 
-json_dosya = os.path.join(base_path, "bagislar.json")
-log_dosya = os.path.join(base_path, "bagis_log.txt")
+# JSON ve log dosyaları (aynı dizinde yer alıyor)
+json_dosya = os.path.join(current_dir, "bagislar.json")
+log_dosya = os.path.join(current_dir, "bagis_log.txt")
 
 # Eğer bagislar.json dosyası varsa, geçmiş verileri yükleyelim.
 bagislar = []
@@ -26,15 +25,13 @@ if os.path.exists(json_dosya):
         sys.stdout.flush()
 
 donation_hash_set = set()
-active_channels = {}           # Örneğin: {"Kanal 1": "Bağlandı, süre: mm:ss", ...}
-clients = set()                # Bağlı istemcileri tutan set
-
-internet_status = "Internet: Çevrimiçi"  # Varsayılan internet durumu
+active_channels = {}  # Örneğin: {"Kanal 1": "Bağlandı", ...}
+clients = set()       # Bağlı istemcileri tutan set
 
 # ANSI renk kodları
-GREEN = "\033[92m"   # Yeşil
-RED   = "\033[91m"   # Kırmızı
-RESET = "\033[0m"    # Renk sıfırlama
+GREEN = "\033[92m"  # Yeşil
+RED   = "\033[91m"  # Kırmızı
+RESET = "\033[0m"   # Renk sıfırlama
 
 def print_active_channels():
     output = ""
@@ -92,8 +89,6 @@ async def websocket_handler(request):
     async for msg in ws:
         if msg.type == web.WSMsgType.TEXT:
             if msg.data.startswith("connection active") or msg.data.startswith("ping"):
-                # Artık her saniye bağlantı süresi güncelleme işlevi devre dışı bırakıldı,
-                # ancak bağlantı bilgilerini kaydediyoruz.
                 m = re.match(r"(?:connection active|ping)\s*\((.*?)\):", msg.data)
                 if m:
                     channel = m.group(1).strip() if m.group(1).strip() else "Kanal 1"
@@ -140,10 +135,14 @@ async def reset_handler(request):
 
 async def start_http_server():
     app = web.Application()
+    # API route'larınız:
     app.add_routes([
         web.get("/ws", websocket_handler),
         web.get("/reset", reset_handler)
     ])
+    # Ana dizindeki tüm dosyaları (HTML, CSS, JS vb.) statik olarak sun:
+    app.add_routes([web.static("/", current_dir)])
+    
     port = int(os.environ.get("PORT", 5679))
     print(f"🚀 Sunucu başlatılıyor (port {port})...")
     sys.stdout.flush()
@@ -153,7 +152,6 @@ async def start_http_server():
     await site.start()
     print(f"HTTP server started at http://localhost:{port} (accessible locally)")
     sys.stdout.flush()
-    # Bağlantı süresi güncelleyen görev devre dışı bırakıldı.
     while True:
         await asyncio.sleep(3600)
 

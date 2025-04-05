@@ -133,6 +133,38 @@ async def reset_handler(request):
         headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache"}
     )
 
+# Otomatik reset işlevi: Her gece saat 03:00'te bagislar.json'ı ve ilgili verileri sıfırlar.
+async def auto_reset():
+    global bagislar, donation_hash_set
+    while True:
+        now = datetime.datetime.now()
+        # Bugün saat 03:00 hedef zaman olarak ayarlanıyor.
+        target = now.replace(hour=3, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += datetime.timedelta(days=1)
+        sleep_time = (target - now).total_seconds()
+        print(f"Otomatik reset için {sleep_time} saniye bekleniyor...")
+        sys.stdout.flush()
+        await asyncio.sleep(sleep_time)
+        # Reset işlemi: JSON dosyası siliniyor, liste temizleniyor ve bağlı istemcilere reset mesajı gönderiliyor.
+        try:
+            if os.path.exists(json_dosya):
+                os.remove(json_dosya)
+                print("Otomatik reset: bagislar.json dosyası silindi.")
+            else:
+                print("Otomatik reset: bagislar.json dosyası mevcut değil.")
+            bagislar.clear()
+            donation_hash_set.clear()
+            for client in list(clients):
+                try:
+                    await client.send_str("reset")
+                except Exception as e:
+                    print("Otomatik reset: reset mesajı gönderilemedi:", e)
+            sys.stdout.flush()
+        except Exception as e:
+            print("Otomatik reset sırasında hata:", e)
+            sys.stdout.flush()
+
 async def start_http_server():
     app = web.Application()
     # API route'larınız:
@@ -152,6 +184,8 @@ async def start_http_server():
     await site.start()
     print(f"HTTP server started at http://localhost:{port} (accessible locally)")
     sys.stdout.flush()
+    # Otomatik reset işlevini arka plan görevi olarak başlatıyoruz.
+    asyncio.create_task(auto_reset())
     while True:
         await asyncio.sleep(3600)
 

@@ -6,8 +6,10 @@ import datetime
 import sys
 from aiohttp import web
 
-# Dosyaların bulunduğu dizini belirtin
-base_path = r"C:\Users\iRony\Desktop\local"
+# Proje dizinini, çalışma dizininizin altındaki "local" klasörü olarak ayarlıyoruz.
+base_path = os.path.join(os.getcwd(), "local")
+if not os.path.exists(base_path):
+    os.makedirs(base_path)
 os.chdir(base_path)
 
 json_dosya = os.path.join(base_path, "bagislar.json")
@@ -24,8 +26,7 @@ if os.path.exists(json_dosya):
         sys.stdout.flush()
 
 donation_hash_set = set()
-active_channels = {}           # Örneğin: {"Kanal 1": "Bağlandı, süre: mm:ss", "Kanal 2": "Bağlandı, süre: mm:ss"}
-connection_start_times = {}    # Her kanal için bağlantı başlangıç zamanını saklar
+active_channels = {}           # Örneğin: {"Kanal 1": "Bağlandı, süre: mm:ss", ...}
 clients = set()                # Bağlı istemcileri tutan set
 
 internet_status = "Internet: Çevrimiçi"  # Varsayılan internet durumu
@@ -42,18 +43,6 @@ def print_active_channels():
         output += f"{channel}: {color}{status}{RESET} | "
     sys.stdout.write("\r" + output.rstrip(" | "))
     sys.stdout.flush()
-
-async def status_updater():
-    global internet_status
-    while True:
-        now = datetime.datetime.now()
-        for channel in connection_start_times:
-            elapsed = now - connection_start_times[channel]
-            minutes = elapsed.seconds // 60
-            seconds = elapsed.seconds % 60
-            active_channels[channel] = f"Bağlandı, süre: {minutes}:{str(seconds).zfill(2)}"
-        print_active_channels()
-        await asyncio.sleep(1)
 
 def bagis_ekle(mesaj):
     print(f"Yeni Bağış Geldi: {mesaj}")
@@ -103,14 +92,14 @@ async def websocket_handler(request):
     async for msg in ws:
         if msg.type == web.WSMsgType.TEXT:
             if msg.data.startswith("connection active") or msg.data.startswith("ping"):
+                # Artık her saniye bağlantı süresi güncelleme işlevi devre dışı bırakıldı,
+                # ancak bağlantı bilgilerini kaydediyoruz.
                 m = re.match(r"(?:connection active|ping)\s*\((.*?)\):", msg.data)
                 if m:
                     channel = m.group(1).strip() if m.group(1).strip() else "Kanal 1"
                     current_channel = channel
-                    if channel not in connection_start_times:
-                        connection_start_times[channel] = datetime.datetime.now()
                     if channel not in active_channels:
-                        active_channels[channel] = "Bağlandı, süre: 0:00"
+                        active_channels[channel] = "Bağlandı"
             else:
                 bagis_ekle(msg.data)
         elif msg.type == web.WSMsgType.ERROR:
@@ -119,8 +108,6 @@ async def websocket_handler(request):
     clients.discard(ws)
     if current_channel:
         active_channels[current_channel] = "Sekme kapatıldı"
-        if current_channel in connection_start_times:
-            del connection_start_times[current_channel]
     print_active_channels()
     print("\n🔌 Bağlantı kapatıldı.")
     sys.stdout.flush()
@@ -166,7 +153,7 @@ async def start_http_server():
     await site.start()
     print(f"HTTP server started at http://localhost:{port} (accessible locally)")
     sys.stdout.flush()
-    asyncio.create_task(status_updater())
+    # Bağlantı süresi güncelleyen görev devre dışı bırakıldı.
     while True:
         await asyncio.sleep(3600)
 

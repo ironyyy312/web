@@ -136,7 +136,8 @@
     // Manuel reset butonu: Tıklandığında sunucudaki reset endpoint'ine istek gönderir ve sayfayı yeniler.
     resetButtonEl.addEventListener("click", async () => {
       try {
-        const res = await fetch("http://localhost:5679/reset");
+        // URL'yi yerel adres yerine göreceli hale getirdik
+        const res = await fetch("/reset");
         const text = await res.text();
         console.log("Reset sonucu:", text);
         alert("Reset başarılı!");

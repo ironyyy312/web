@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>Bağış Tahtası</title>
+  <style>
+    /* Genel sayfa ayarları: Tam ekran, siyah arka plan, içerik ortalanıyor */
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: black;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: 'Montserrat', sans-serif;
+    }
+    /* Ana çerçeve: Bağış bilgilerini gösteren kutu, tamamen CSS ile tasarlandı */
+    .donation-frame {
+      background-color: rgba(0, 0, 0, 0.7);
+      border: 5px solid orange;
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 0 10px rgba(255, 165, 0, 0.5);
+      max-width: 400px;
+      width: 90%;
+      color: #fff;
+      margin-bottom: 20px;
+    }
+    /* Bağış miktarı: Yeşil, kalın, büyük yazı */
+    .donation-amount {
+      font-size: 32px;
+      font-weight: bold;
+      color: rgb(0, 244, 41);
+      margin-bottom: 10px;
+    }
+    /* Bağış gönderenin ismi: Altın sarısı, büyük harf */
+    .donor-name {
+      font-size: 38px;
+      font-weight: bold;
+      color: #FFD700;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    /* Countdown timer: Her gün saat 03:00’a kadar kalan süreyi gösterir */
+    .reset-timer {
+      font-size: 18px;
+      color: white;
+      margin-bottom: 20px;
+    }
+    /* Manuel reset butonu: Çerçevenin dışına yerleştirilmiş, çekici stil */
+    .reset-button {
+      padding: 10px 20px;
+      font-size: 18px;
+      border: none;
+      border-radius: 5px;
+      background-color: orange;
+      color: black;
+      cursor: pointer;
+      box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <!-- Bağış bilgilerini gösteren çerçeve -->
+  <div class="donation-frame">
+    <div class="donation-amount" id="donationAmount">0 TL</div>
+    <div class="donor-name" id="donorName">KRAL BEKLENİYOR</div>
+  </div>
+  <!-- Countdown timer: Her gün saat 03:00’a kadar kalan süreyi gösterir -->
+  <div class="reset-timer" id="resetTimer">Reset in: --:--:--</div>
+  <!-- Manuel reset butonu -->
+  <button class="reset-button" id="resetButton">Manuel Resetle</button>
+
+  <script>
+    // En yüksek bağışı yapan kişinin bilgilerini saklar
+    let topDonor = { name: 'KRAL BEKLENİYOR', amount: 0 };
+    const donorNameEl = document.getElementById("donorName");
+    const donationAmountEl = document.getElementById("donationAmount");
+    const resetTimerEl = document.getElementById("resetTimer");
+    const resetButtonEl = document.getElementById("resetButton");
+
+    // Ekrandaki bağış bilgilerini güncelleyen fonksiyon
+    function updateDisplay() {
+      donorNameEl.textContent = topDonor.name;
+      donationAmountEl.textContent = topDonor.amount.toFixed(2) + " TL";
+    }
+    updateDisplay();
+
+    // Countdown timer: Her gün saat 03:00'a kadar kalan süreyi hesaplar
+    function updateCountdown() {
+      const now = new Date();
+      let nextReset = new Date();
+      nextReset.setHours(3, 0, 0, 0); // Bugün saat 03:00
+      if (now >= nextReset) {
+        nextReset.setDate(nextReset.getDate() + 1);
+      }
+      const diff = nextReset - now;
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      resetTimerEl.textContent = `Reset in: ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+    setInterval(updateCountdown, 1000);
+    updateCountdown();
+
+    // Bağışları 2 saniyede bir güncelleyen fonksiyon
+    async function fetchDonations() {
+      try {
+        const res = await fetch("bagislar.json?_=" + new Date().getTime());
+        const donations = await res.json();
+        let totals = {};
+        let computedHighest = { name: 'KRAL BEKLENİYOR', amount: 0 };
+
+        donations.forEach(donation => {
+          if (!donation.isim || donation.miktar < 1) return;
+          totals[donation.isim] = (totals[donation.isim] || 0) + donation.miktar;
+          if (totals[donation.isim] > computedHighest.amount) {
+            computedHighest = { name: donation.isim, amount: totals[donation.isim] };
+          }
+        });
+
+        // Sadece yeni hesaplanan en yüksek bağış, mevcut topDonor'dan büyükse güncelle.
+        if (computedHighest.amount > topDonor.amount) {
+          topDonor = computedHighest;
+          updateDisplay();
+        }
+      } catch (e) {
+        console.error("bagislar.json okunamadı:", e);
+      }
+    }
+    setInterval(fetchDonations, 2000);
+
+    // Manuel reset butonu: Tıklandığında sunucudaki reset endpoint'ine istek gönderir ve sayfayı yeniler.
+    resetButtonEl.addEventListener("click", async () => {
+      try {
+        const res = await fetch("http://localhost:5679/reset");
+        const text = await res.text();
+        console.log("Reset sonucu:", text);
+        alert("Reset başarılı!");
+        location.reload();
+      } catch (e) {
+        console.error("Reset isteği başarısız:", e);
+        alert("Reset hatası: " + e);
+      }
+    });
+  </script>
+</body>
+</html>

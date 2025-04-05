@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>Canlı Süre Sayaç</title>
+  <style>
+    /* Sayfa genel ayarları: Siyah arka plan, sarı yazı, merkezi hizalama */
+    body {
+      background-color: black;
+      color: yellow;
+      font-family: monospace;
+      text-align: center;
+      margin: 0;
+      padding: 50px 0;
+    }
+    /* Zaman sayacının stili */
+    #timer {
+      font-size: 72px;
+      margin-bottom: 20px;
+      text-decoration: none; /* Gereksiz çizgiler kaldırıldı */
+    }
+    /* Bonus süre göstergesi */
+    #bonus-time {
+      color: lime;
+      font-size: 36px;
+      margin-top: 20px;
+      opacity: 0;
+      transition: opacity 0.5s ease-in-out;
+    }
+    /* Buton kapsayıcısı */
+    .buttons {
+      margin-top: 40px;
+    }
+    /* Buton stili */
+    button {
+      font-size: 24px;
+      padding: 10px 20px;
+      background-color: #333;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      margin: 0 10px;
+    }
+    button:hover {
+      background-color: #555;
+    }
+    /* Yanıp-sönen efekt: Sayaç 10 dk (600 sn) veya altına düştüğünde */
+    @keyframes blink {
+      0% { opacity: 1; }
+      50% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+    .blink {
+      color: red !important;
+      animation: blink 1s linear infinite;
+    }
+  </style>
+</head>
+<body>
+  <!-- Zaman sayacı; 0 olduğunda "0000" olarak gösterilir -->
+  <div id="timer">60:00</div>
+  <!-- Bonus süre mesajı -->
+  <div id="bonus-time">+0s</div>
+  <!-- +1 dk, -1 dk, ve Reset butonları -->
+  <div class="buttons">
+    <button onclick="increaseTime()">+1 dk</button>
+    <button onclick="decreaseTime()">-1 dk</button>
+    <button onclick="resetTime()">Reset</button>
+  </div>
+
+  <script>
+    // Sayaç başlangıç değeri: 60 dakika = 3600 saniye
+    let timeLeft = 3600;
+    // Başlangıçta mevcut bağış kayıtlarını görmezden gelmek için
+    // lastProcessed, sayfa yüklendiğinde bagis_log.txt içerisindeki satır sayısı olarak ayarlanacak.
+    let lastProcessed = 0;
+
+    const timerEl = document.getElementById("timer");
+    const bonusEl = document.getElementById("bonus-time");
+
+    // Saniyeyi "mm:ss" formatına çevirir
+    function formatTime(seconds) {
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+
+    // Zaman sayacını günceller; sayaç 0 ise "0000", 10 dk altıysa blink efekti ekler
+    function updateTimerDisplay() {
+      if (timeLeft <= 0) {
+        timerEl.textContent = "0000";
+      } else {
+        timerEl.textContent = formatTime(timeLeft);
+      }
+      if (timeLeft <= 600) {
+        timerEl.classList.add("blink");
+      } else {
+        timerEl.classList.remove("blink");
+      }
+    }
+
+    // Bonus süre mesajını gösterir; bonus mesajı 3 saniye görünür
+    function showBonus(seconds) {
+      bonusEl.textContent = `+${seconds}s`;
+      bonusEl.style.opacity = 1;
+      setTimeout(() => {
+        bonusEl.style.opacity = 0;
+      }, 20000);
+    }
+
+    // +1 dakika ekler
+    function increaseTime() {
+      timeLeft += 60;
+      updateTimerDisplay();
+    }
+
+    // -1 dakika çıkarır (sıfırın altına düşmemesi için)
+    function decreaseTime() {
+      if (timeLeft >= 60) {
+        timeLeft -= 60;
+        updateTimerDisplay();
+      }
+    }
+
+    // Reset butonu: Sayaç 60 dakikaya (3600 saniye) sıfırlanır
+    function resetTime() {
+      timeLeft = 3600;
+      updateTimerDisplay();
+    }
+
+    // Sayfa yüklendiğinde bagis_log.txt içerisindeki mevcut satır sayısını ayarlamak için
+    async function initializeLog() {
+      try {
+        const res = await fetch("bagis_log.txt?_=" + new Date().getTime());
+        const text = await res.text();
+        const lines = text.split("\n").filter(line => line.trim() !== "");
+        lastProcessed = lines.length;
+      } catch (e) {
+        console.error("bagis_log.txt initialization error:", e);
+      }
+    }
+
+    // bagis_log.txt dosyasını her 2 saniyede bir kontrol eder; yalnızca yeni satırlar üzerinden bonus hesaplaması yapar.
+    async function kontrolEt() {
+      try {
+        const res = await fetch("bagis_log.txt?_=" + new Date().getTime());
+        const text = await res.text();
+        const lines = text.split("\n").filter(line => line.trim() !== "");
+        if (lines.length > lastProcessed) {
+          const yeniBagislar = lines.slice(lastProcessed);
+          yeniBagislar.forEach(line => {
+            // Beklenen satır formatı: "Tarih - İsim - Miktar TL - Bağış Türü - Mesaj"
+            const parts = line.split(" - ");
+            if (parts.length >= 3) {
+              let amountStr = parts[2].replace(" TL", "").trim();
+              let amount = parseFloat(amountStr);
+              if (!isNaN(amount) && amount > 0) {
+                // Her 110 TL için 20 dakika (1200 saniye) bonus eklenir
+                const ekstraSure = Math.floor((amount / 110) * 1200);
+                timeLeft += ekstraSure;
+                showBonus(ekstraSure);
+                updateTimerDisplay();
+              }
+            }
+          });
+          lastProcessed = lines.length;
+        }
+      } catch (e) {
+        console.error("bagis_log.txt okunamadı:", e);
+      }
+    }
+
+    // Sayaç her saniye 1 azaltılır
+    setInterval(() => {
+      if (timeLeft > 0) {
+        timeLeft--;
+        updateTimerDisplay();
+      } else {
+        timerEl.textContent = "0000";
+      }
+    }, 1000);
+
+    // Bagis_log.txt kontrolü her 2 saniyede bir yapılır
+    setInterval(kontrolEt, 2000);
+
+    // Sayfa yüklendiğinde, önce mevcut log satır sayısını al
+    initializeLog().then(updateTimerDisplay);
+  </script>
+</body>
+</html>

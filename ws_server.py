@@ -4,17 +4,15 @@ import os
 import re
 import datetime
 import sys
-from aiohttp import web
+from aiohttp import web, ClientSession
 
 # Çalışma dizinini ana dizin olarak ayarla
 current_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(current_dir)
 
-# JSON ve log dosyaları (aynı dizinde yer alıyor)
 json_dosya = os.path.join(current_dir, "bagislar.json")
 log_dosya = os.path.join(current_dir, "bagis_log.txt")
 
-# Eğer bagislar.json dosyası varsa, geçmiş verileri yükleyelim.
 bagislar = []
 if os.path.exists(json_dosya):
     try:
@@ -25,13 +23,12 @@ if os.path.exists(json_dosya):
         sys.stdout.flush()
 
 donation_hash_set = set()
-active_channels = {}  # Örneğin: {"Kanal 1": "Bağlandı", ...}
-clients = set()       # Bağlı istemcileri tutan set
+active_channels = {}
+clients = set()
 
-# ANSI renk kodları
-GREEN = "\033[92m"  # Yeşil
-RED   = "\033[91m"  # Kırmızı
-RESET = "\033[0m"   # Renk sıfırlama
+GREEN = "\033[92m"
+RED   = "\033[91m"
+RESET = "\033[0m"
 
 def print_active_channels():
     output = ""
@@ -133,12 +130,10 @@ async def reset_handler(request):
         headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache"}
     )
 
-# Otomatik reset işlevi: Her gece saat 03:00'te bagislar.json'ı ve ilgili verileri sıfırlar.
 async def auto_reset():
     global bagislar, donation_hash_set
     while True:
         now = datetime.datetime.now()
-        # Bugün saat 03:00 hedef zaman olarak ayarlanıyor.
         target = now.replace(hour=3, minute=0, second=0, microsecond=0)
         if now >= target:
             target += datetime.timedelta(days=1)
@@ -146,7 +141,6 @@ async def auto_reset():
         print(f"Otomatik reset için {sleep_time} saniye bekleniyor...")
         sys.stdout.flush()
         await asyncio.sleep(sleep_time)
-        # Reset işlemi: JSON dosyası siliniyor, liste temizleniyor ve bağlı istemcilere reset mesajı gönderiliyor.
         try:
             if os.path.exists(json_dosya):
                 os.remove(json_dosya)
@@ -165,27 +159,42 @@ async def auto_reset():
             print("Otomatik reset sırasında hata:", e)
             sys.stdout.flush()
 
+# 🆕 Overlay sayfalarını açık tutmak için: periyodik istek at
+async def keep_overlay_pages_alive():
+    overlay_urls = [
+        "https://streamelements.com/overlay/67f09ec1992fa6c9abcda18f/7v8OiWoMZYqPQz2ls0ST9M_tkAzULwUBpPlxhRV9nh5o9FGR",
+        "https://streamelements.com/overlay/67f040c9051cb72361332329/nnF0dF3sMVnCWHAHCoC9IXVinvzNrL0rfGFRXwIdth8FKkny"
+    ]
+    async with ClientSession() as session:
+        while True:
+            for url in overlay_urls:
+                try:
+                    async with session.get(url) as response:
+                        print(f"[Overlay Ping] {url} - Status: {response.status}")
+                except Exception as e:
+                    print(f"[Overlay Ping] Hata: {e}")
+            await asyncio.sleep(280)  # 4-5 dakikada bir istek
+
 async def start_http_server():
     app = web.Application()
-    # API route'larınız:
     app.add_routes([
         web.get("/ws", websocket_handler),
-        web.get("/reset", reset_handler)
+        web.get("/reset", reset_handler),
+        web.static("/", current_dir)
     ])
-    # Ana dizindeki tüm dosyaları (HTML, CSS, JS vb.) statik olarak sun:
-    app.add_routes([web.static("/", current_dir)])
     
-    port = int(os.environ.get("PORT", 5679))
+    port = int(os.environ["PORT"])  # ✅ Railway ile uyumlu hale getirildi
     print(f"🚀 Sunucu başlatılıyor (port {port})...")
     sys.stdout.flush()
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    print(f"HTTP server started at http://localhost:{port} (accessible locally)")
+    print(f"✅ HTTP server hazır: http://localhost:{port}")
     sys.stdout.flush()
-    # Otomatik reset işlevini arka plan görevi olarak başlatıyoruz.
+
     asyncio.create_task(auto_reset())
+    asyncio.create_task(keep_overlay_pages_alive())  # Overlay sayfaları aktif tut
     while True:
         await asyncio.sleep(3600)
 

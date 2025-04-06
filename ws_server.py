@@ -5,8 +5,9 @@ import re
 import datetime
 import sys
 from aiohttp import web, ClientSession
+from pyppeteer import launch
 
-# Çalışma dizinini ana dizin olarak ayarla
+# Çalışma dizinini ayarla
 current_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(current_dir)
 
@@ -27,7 +28,7 @@ active_channels = {}
 clients = set()
 
 GREEN = "\033[92m"
-RED   = "\033[91m"
+RED = "\033[91m"
 RESET = "\033[0m"
 
 def print_active_channels():
@@ -159,21 +160,21 @@ async def auto_reset():
             print("Otomatik reset sırasında hata:", e)
             sys.stdout.flush()
 
-# 🆕 Overlay sayfalarını açık tutmak için: periyodik istek at
-async def keep_overlay_pages_alive():
-    overlay_urls = [
+# 🔥 Pyppeteer ile overlay'leri görünmez tarayıcıda açık tut
+async def keep_browser_tabs_open():
+    urls = [
         "https://streamelements.com/overlay/67f09ec1992fa6c9abcda18f/7v8OiWoMZYqPQz2ls0ST9M_tkAzULwUBpPlxhRV9nh5o9FGR",
         "https://streamelements.com/overlay/67f040c9051cb72361332329/nnF0dF3sMVnCWHAHCoC9IXVinvzNrL0rfGFRXwIdth8FKkny"
     ]
-    async with ClientSession() as session:
-        while True:
-            for url in overlay_urls:
-                try:
-                    async with session.get(url) as response:
-                        print(f"[Overlay Ping] {url} - Status: {response.status}")
-                except Exception as e:
-                    print(f"[Overlay Ping] Hata: {e}")
-            await asyncio.sleep(280)  # 4-5 dakikada bir istek
+    browser = await launch(headless=True, args=["--no-sandbox"])
+    for url in urls:
+        try:
+            page = await browser.newPage()
+            await page.goto(url)
+            print(f"🟢 Overlay aktif: {url}")
+        except Exception as e:
+            print(f"❌ Overlay açılırken hata: {e}")
+    # Sekmeler açık kalacak (tarayıcı kapanmaz)
 
 async def start_http_server():
     app = web.Application()
@@ -183,7 +184,7 @@ async def start_http_server():
         web.static("/", current_dir)
     ])
     
-    port = int(os.environ["PORT"])  # ✅ Railway ile uyumlu hale getirildi
+    port = int(os.environ["PORT"])
     print(f"🚀 Sunucu başlatılıyor (port {port})...")
     sys.stdout.flush()
     runner = web.AppRunner(app)
@@ -194,7 +195,7 @@ async def start_http_server():
     sys.stdout.flush()
 
     asyncio.create_task(auto_reset())
-    asyncio.create_task(keep_overlay_pages_alive())  # Overlay sayfaları aktif tut
+    asyncio.create_task(keep_browser_tabs_open())  # 🔥 Tarayıcı simülasyonu başlat
     while True:
         await asyncio.sleep(3600)
 
